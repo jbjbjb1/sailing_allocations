@@ -21,7 +21,7 @@ class Camp:
         # Write functions to be executed when instance of class is created      
 
 
-        def availability_count(self):
+        def availability_count():
             """ Calculates availability of leaders, boats and campers. """   
             leader_avail = self.df_leader[(self.df_leader["Available"] != "n") 
                                         & ( (self.df_leader["SkippersTicket"] == "y") 
@@ -40,7 +40,7 @@ class Camp:
             return leader_avail, craft_avail, camper_avail
 
         
-        def initiate_balance_log(self):
+        def initiate_balance_log():
             """ Initiate the balance log with the campers and boats for this allocation. """
             balance_log_columns = self.df_boat["Type"].unique().tolist()
             list_of_campers = self.camper_avail.index.tolist()
@@ -49,7 +49,7 @@ class Camp:
             return balance_log
         
         
-        def generate_allocations(self):
+        def generate_allocations():
             """ Iterate through timeslots in df_schedule and give an allocations. """
             allocations = []
             for timeslot in list(df_schedule.index.values):
@@ -59,9 +59,9 @@ class Camp:
         
         
         # Call functions to run when instance of class is created
-        self.leader_avail, self.craft_avail, self.camper_avail = availability_count(self)
-        self.balance_log = initiate_balance_log(self)
-        self.allocations, self.balance_log = generate_allocations(self)
+        self.leader_avail, self.craft_avail, self.camper_avail = availability_count()
+        self.balance_log = initiate_balance_log()
+        self.allocations, self.balance_log = generate_allocations()
 
 
     def excel_export(self):
@@ -175,7 +175,7 @@ class Allocations:
 
         # Write functions to be executed when instance of class is created           
         
-        def update_balance_log(self, session_log):
+        def update_balance_log(session_log):
             """ Takes the list of assigned campers from a session and updates the balance_log. """
             for entry in session_log:
                 for camper, craft_type in entry.items():
@@ -184,14 +184,14 @@ class Allocations:
             return self.balance_log
             
 
-        def assign_craft(self, craft_type, craft_avail):
+        def assign_craft(craft_type, craft_avail):
             """ Assign the next craft in a given craft type. """
             craft = craft_avail.index[craft_avail["Type"] == craft_type][0]    # select first craft on list
             craft_avail = craft_avail.drop([craft])     # drop selected craft
             return craft, craft_avail
 
 
-        def leader_balance(self, craft_type, leader_avail):
+        def leader_balance(craft_type, leader_avail):
             """ Use balance to assign leader to a craft type. """
             # Below are masks to select appropriate leader from list
             leader_requirement = {"Rescue Boat": r'(leader_avail["SkippersTicket"] == "y")',
@@ -205,7 +205,7 @@ class Allocations:
             return leader, leader_avail
 
 
-        def initiate_crew(self):
+        def initiate_crew():
             """ Assign crew for allocation (i.e. leader/boat allocation). """   
             # The following variable defines the order & minimum number of craft required
             allocate_define = {"Rescue Boat": 2,
@@ -220,8 +220,8 @@ class Allocations:
             for craft_type, num in allocate_define.items():
                 while num > 0:
                     try:
-                        craft, craft_avail = assign_craft(self, craft_type, craft_avail)
-                        leader, leader_avail = leader_balance(self, craft_type, leader_avail)
+                        craft, craft_avail = assign_craft(craft_type, craft_avail)
+                        leader, leader_avail = leader_balance(craft_type, leader_avail)
                     except IndexError:
                         # If there are no craft or leaders available, Pandas will throw an IndexError in the respective function
                         #print('--------------------IndexError--------------------')
@@ -232,13 +232,13 @@ class Allocations:
             return crew
         
 
-        def generate_session(self):
+        def generate_session():
             """ Iterate through three sessions for campers/leaders/boats. """
             sessions = []
             # print('Appended in generate fn')
             for session_no in range(1, 4):
                 new_session = Session(self, session_no, self.crew, self.balance_log)                # create new instance of allocation class
-                self.balance_log = update_balance_log(self, new_session.session_log)     # add the allocations of that session to the balance log               
+                self.balance_log = update_balance_log(new_session.session_log)     # add the allocations of that session to the balance log               
                 sessions.append(new_session)
             #     print('Last boat crew selected for {} {} session {} is: {}.'.format(new_session.allocation.day, new_session.allocation.time, new_session.session_no, new_session.crew[-1].campers[-1]))
             #     print('Last boat crew selected for {} {} session {} is: {}. (appended)'.format(sessions[session_no-1].allocation.day, sessions[session_no-1].allocation.time, sessions[session_no-1].session_no, sessions[session_no-1].crew[-1].campers[-1]))
@@ -251,8 +251,8 @@ class Allocations:
         # Call functions to run when instance of class is created        
         self.leader_avail, self.craft_avail, self.camper_avail = self.camp.leader_avail, self.camp.craft_avail, self.camp.camper_avail
         self.balance_log = self.camp.balance_log                    # reference the balance log from the allocation class
-        self.crew = initiate_crew(self)
-        self.sessions, self.balance_log = generate_session(self)    # save sessions created and updated balance log   
+        self.crew = initiate_crew()
+        self.sessions, self.balance_log = generate_session()    # save sessions created and updated balance log   
 
 
 class Session:
@@ -266,7 +266,7 @@ class Session:
         # Write functions to be executed when instance of class is created      
         
 
-        def camper_balance(self, craft_type, camper_avail):
+        def camper_balance(craft_type, camper_avail):
             """ Use balance to assign camper to a craft type. """
             balance_log_camper_avail = camper_avail.merge(balance_log[craft_type], how='left', left_index=True, right_index=True)   # merge number of turns onto camper_avail df
             least_turns = balance_log_camper_avail[craft_type].min()     # find the least turns someone has had in that craft_type
@@ -276,7 +276,7 @@ class Session:
             return camper, camper_avail
 
         
-        def initiate_crew(self):
+        def initiate_crew():
             """ Assign crew for session (i.e. camper). """   
             camper_avail = self.allocation.camper_avail
             for crew in self.crew:
@@ -284,7 +284,7 @@ class Session:
                 capacity = crew.capacity   # repeat as many times as possible
                 while capacity > 0:
                     try:
-                        camper, camper_avail = camper_balance(self, crew.craft_type, camper_avail)
+                        camper, camper_avail = camper_balance(crew.craft_type, camper_avail)
                         self.session_log.append({camper: crew.craft_type})   # save a record of who was assigned to what craft type
                     except IndexError:
                         # If there are no craft or leaders available, Pandas will throw an IndexError in the respective function
@@ -297,6 +297,6 @@ class Session:
             
 
         # Call functions to run when instance of class is created
-        self.crew, self.session_log = initiate_crew(self)     # overwrites crew with campers added and session log of who was assigned where
+        self.crew, self.session_log = initiate_crew()     # overwrites crew with campers added and session log of who was assigned where
         # if self.session_no == 2:
         #     print('Last boat crew selected for {} {} session {} is: {}. (check - session class)'.format(self.allocation.day, self.allocation.time, self.session_no, self.crew[-1].campers[-1]))
