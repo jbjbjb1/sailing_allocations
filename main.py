@@ -11,4 +11,5 @@ df_schedule = pd.read_excel('input_data.xlsx', sheet_name='Schedule', index_col=
 
 # Initiate camp class
 camp_plan = sc.Camp(df_camper, df_leader, df_boat, df_schedule)
-camp_plan.excel_export()
+camp_plan.export_plan()
+camp_plan.export_balance_log()

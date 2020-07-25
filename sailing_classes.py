@@ -28,25 +28,19 @@ class Camp:
                                         & ( (self.df_leader["SkippersTicket"] == "y") 
                                         | (self.df_leader["CompVag"] == "y")
                                         | (self.df_leader["CompCat"] == "y") 
-                                        | (self.df_leader["Race Control"] == "y")
+                                        | (self.df_leader["CompRaceControl"] == "y")
                                         )]
             craft_avail = self.df_boat[self.df_boat["Available"] != "n"]
             camper_avail = self.df_camper[self.df_camper["Available"] != "n"]
-
-            #print('Leaders available:', len(leader_avail))
-            #print('Craft count available (inc. beach):', len(craft_avail))
-            #print('Camper positions available (inc. beach):', craft_avail["CamperCapacity"].sum())
-            #print('Campers available:', len(camper_avail))
-
             return leader_avail, craft_avail, camper_avail
 
         
         def initiate_balance_log():
-            """ Initiate the balance log with the campers and boats for this allocation. """
+            """ Initiate the balance log with the leaders, campers and boats for this allocation. """
             balance_log_columns = self.df_boat["Type"].unique().tolist()
-            list_of_campers = self.camper_avail.index.tolist()
-            balance_log = pd.DataFrame(0, index=list_of_campers, columns=balance_log_columns)
-            balance_log.index.names = ["Campers"]
+            list_of_leaders_campers = self.leader_avail.index.tolist() + self.camper_avail.index.tolist()
+            balance_log = pd.DataFrame(0, index=list_of_leaders_campers, columns=balance_log_columns)
+            balance_log.index.names = ["Names"]
             return balance_log
         
         
@@ -63,11 +57,18 @@ class Camp:
         self.leader_avail, self.craft_avail, self.camper_avail = availability_count()
         self.balance_log = initiate_balance_log()
         self.allocations, self.balance_log = generate_allocations()
+    
+
+    def numbers(self):
+        """ Prints numbers of people on camp. """
+        print('Leaders available:', len(self.leader_avail))
+        print('Craft count available (inc. beach):', len(self.craft_avail))
+        print('Camper positions available (inc. beach):', self.craft_avail["CamperCapacity"].sum())
+        print('Campers available:', len(self.camper_avail))
 
 
-    def excel_export(self):
+    def export_plan(self):
         """ Exports entire generated camp plan to Excel Workbook. """
-        #TODO complete export code below for entire camp creation
         wb = Workbook()                 # create new Excel workbook
         ws = []
         ws.append(wb.active)            # gets the current Excel worksheet
@@ -137,14 +138,32 @@ class Camp:
         saved = False
         while saved is False:
             try:
+                # Save the file
                 filename = "sailing_allocation_output.xlsx"
                 wb.save(filename)
-                print('Export complete, opening file.')
-                os.startfile(os.path.join(os.getcwd(), filename))
+                # Print status to terminal and open file
+                print('Export sailing_allocation_output.xlsx complete.')
                 saved = True
             except PermissionError:
                 input('Please close sailing_allocation_output.xlsx and press enter to continue.')
 
+
+    def export_balance_log(self):
+        """ Export to Excel the turns leaders and campers had on different craft types. """
+        saved = False
+        while saved is False:
+            try:
+                # Save the file
+                with pd.ExcelWriter('sailing_allocation_output_turns.xlsx') as writer:
+                    balance_log_leaders = self.balance_log[self.balance_log.index.isin(self.leader_avail.index.tolist())]
+                    balance_log_leaders.to_excel(writer, sheet_name='Leaders_turns')   # leaders in balance_log
+                    balance_log_campers = self.balance_log[self.balance_log.index.isin(self.camper_avail.index.tolist())]
+                    balance_log_campers.to_excel(writer, sheet_name='Campers_turns')   # campers in balance_log
+                print('Export sailing_allocation_output_turns.xlsx complete.')
+                saved = True
+            except PermissionError:
+                input('Please close sailing_allocation_output_turns.xlsx and press enter to continue.')
+        
 
 class Crew:
     def __init__(self, leader, craft, craft_type, capacity):
@@ -177,11 +196,11 @@ class Allocations:
         # Write functions to be executed when instance of class is created           
         
         def update_balance_log(session_log):
-            """ Takes the list of assigned campers from a session and updates the balance_log. """
+            """ Takes the list of assigned leaders and campers from a session and updates the balance_log. """
             for entry in session_log:
-                for camper, craft_type in entry.items():
-                    # Update the balance log for what each camper was assigned to 
-                    self.balance_log.loc[camper, craft_type] += 1
+                for name, craft_type in entry.items():
+                    # Update the balance log for what each leader and camper was assigned to 
+                    self.balance_log.loc[name, craft_type] += 1
             return self.balance_log
             
 
@@ -196,13 +215,17 @@ class Allocations:
             """ Use balance to assign leader to a craft type. """
             # Below are masks to select appropriate leader from list
             leader_requirement = {"Rescue Boat": r'(leader_avail["SkippersTicket"] == "y")',
-                                    "Race Control": r'(leader_avail["Race Control"] == "y")',
+                                    "Race Control": r'(leader_avail["CompRaceControl"] == "y")',
                                     "Vagabond": r'(leader_avail["CompVag"] == "y")',
                                     "Cat": r'(leader_avail["CompCat"] == "y")',
-                                    "Beach": '(leader_avail["Available"] != "n")'}        # dummy requirement for beach, as person already available
-            # TODO incorporate balance function (currently just selecting first available)
-            leader = leader_avail.index[eval(leader_requirement[craft_type])][0]
-            leader_avail = leader_avail.drop([leader])     # drop selected leader
+                                    "Beach": '(leader_avail["Available"] != "n")'}   # dummy requirement for beach, as person already available
+            # Get the list of leaders that meet the requirements for this craft
+            leader_avail_req = leader_avail[eval(leader_requirement[craft_type])]
+            balance_log_leader_avail_req = leader_avail_req.merge(camp.balance_log[craft_type], how='left', left_index=True, right_index=True)   # merge number of turns onto camper_avail df
+            least_turns = balance_log_leader_avail_req[craft_type].min()     # find the least turns someone has had in that craft_type
+            least_turns_leaders = balance_log_leader_avail_req.index[(balance_log_leader_avail_req[craft_type] == least_turns)].tolist()    # get a list of all people who have had that many turns
+            leader = random.choice(least_turns_leaders)   # randomly select someone from that list
+            leader_avail = leader_avail.drop([leader])  # drop selected leader
             return leader, leader_avail
 
 
@@ -255,8 +278,8 @@ class Session:
         """ Fills a single session for the list of duty groups. """
         self.allocation = allocation
         self.session_no = session_no
-        self.crew = crew[:]
-        self.session_log = []
+        self.crew = crew
+        self.session_log = [{crew.leader: crew.craft_type} for crew in self.crew] # append the leaders for the session to the log
         # Write functions to be executed when instance of class is created      
         
 
@@ -272,7 +295,7 @@ class Session:
         
         def initiate_crew():
             """ Assign crew for session (i.e. camper). """   
-            camper_avail = self.allocation.camper_avail
+            camper_avail = allocation.camper_avail
             for crew in self.crew:
                 campers = []
                 capacity = crew.capacity   # repeat as many times as possible
