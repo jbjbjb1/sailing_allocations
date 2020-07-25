@@ -1,6 +1,6 @@
 # Readme
 
-A program to generate sailing allocations for camp. All names have been randomly generated. Phase 1 is working (generates allocations for entire camp).
+A program to generate sailing allocations for camp. All names have been randomly generated. Phase 1 is working (generates allocations for entire camp). Below is a video overview.
 
 [![Click to view video](https://img.youtube.com/vi/Zymmi5Wx6Xg/0.jpg)](https://www.youtube.com/watch?v=Zymmi5Wx6Xg)
 
