@@ -2,6 +2,7 @@
 
 import random
 import os
+import copy
 
 import numpy as np
 import pandas as pd
@@ -93,18 +94,18 @@ class Camp:
             ws[-1]['A4'].border = thin_border
             # Create row for Boat
             for row in [3]:
-                for col in range(2, len(allocation.crew_leaders)+2):
-                    a = ws[-1].cell(column=col, row=row, value=allocation.crew_leaders[col-2]['craft'])    # put boat name
+                for col in range(2, len(allocation.crew)+2):
+                    a = ws[-1].cell(column=col, row=row, value=allocation.crew[col-2].craft)    # put boat name
                     a.border = thin_border                                                      # apply border
                     # Apply fixed column widths, make it wider for Beach
-                    if allocation.crew_leaders[col-2]['craft'] == "Beach":
+                    if allocation.crew[col-2].craft == "Beach":
                         ws[-1].column_dimensions[get_column_letter(col)].width = column_width + 18       
                     else:
                         ws[-1].column_dimensions[get_column_letter(col)].width = column_width   
             # Create row for Skipper
             for row in [4]:
-                for col in range(2, len(allocation.crew_leaders)+2):
-                    b = ws[-1].cell(column=col, row=row, value=allocation.crew_leaders[col-2]['leader'])    # put boat name
+                for col in range(2, len(allocation.crew)+2):
+                    b = ws[-1].cell(column=col, row=row, value=allocation.crew[col-2].leader)    # put boat name
                     b.border = thin_border                                                       # apply border
             # Create rows for Sessions
             for session in allocation.sessions:
@@ -112,7 +113,7 @@ class Camp:
                 _.border = thin_border                                                                                  # apply border
                 # Add campers to cells
                 for row in [session.session_no+4]:
-                    for col in range(2, len(allocation.crew_leaders)+2):
+                    for col in range(2, len(allocation.crew)+2):
                         # For beach only, put 3 campers on each line
                         if session.crew[col-2].craft == "Beach":
                             campers = session.crew[col-2].campers
@@ -146,13 +147,13 @@ class Camp:
 
 
 class Crew:
-    def __init__(self, leader, craft, craft_type, capacity, campers):
+    def __init__(self, leader, craft, craft_type, capacity):
         """ Holds the leader, craft type and campers involved for a specific session. """
         self.leader = leader
         self.craft = craft
         self.craft_type = craft_type
         self.capacity = capacity
-        self.campers = campers
+        self.campers = []
     
 
     def __str__(self):
@@ -172,6 +173,7 @@ class Allocations:
         else:
             self.duty_groups = self.duty_groups.split(',')
             self.duty_groups = [group.strip() for group in self.duty_groups] 
+
         # Write functions to be executed when instance of class is created           
         
         def update_balance_log(session_log):
@@ -204,7 +206,7 @@ class Allocations:
             return leader, leader_avail
 
 
-        def initiate_crew_leaders():
+        def initiate_crew():
             """ Assign crew for allocation (i.e. leader/boat allocation). """   
             # The following variable defines the order & minimum number of craft required
             allocate_define = {"Rescue Boat": 2,
@@ -215,7 +217,7 @@ class Allocations:
             # Assign local values for function to craft and leader availability
             craft_avail = self.craft_avail
             leader_avail = self.leader_avail
-            crew_leaders = []
+            crew = []
             for craft_type, num in allocate_define.items():
                 while num > 0:
                     try:
@@ -226,33 +228,34 @@ class Allocations:
                         #print('--------------------IndexError--------------------')
                         break
                     capacity = self.camp.df_boat.loc[craft, "CamperCapacity"]
-                    crew_leaders.append({'leader': leader, 'craft': craft, 'craft_type': craft_type, 'capacity': capacity})
+                    crew.append(Crew(leader, craft, craft_type, capacity))
                     num += -1
-            return crew_leaders
+            return crew
         
 
         def generate_session():
             """ Iterate through three sessions for campers/leaders/boats. """
             sessions = []
             for session_no in range(1, 4):
-                new_session = Session(self, session_no, self.crew_leaders, self.balance_log)                # create new instance of allocation class
-                self.balance_log = update_balance_log(new_session.session_log)     # add the allocations of that session to the balance log               
+                # copy.deepcopy() is needed otherwise all new self.crew will be linked and overwrite each other
+                new_session = Session(self, session_no, copy.deepcopy(self.crew), self.balance_log)           # create new instance of allocation class
+                self.balance_log = update_balance_log(new_session.session_log)                                # add the allocations of that session to the balance log               
                 sessions.append(new_session)
             return sessions, self.balance_log
 
         # Call functions to run when instance of class is created        
         self.leader_avail, self.craft_avail, self.camper_avail = self.camp.leader_avail, self.camp.craft_avail, self.camp.camper_avail
         self.balance_log = self.camp.balance_log                    # reference the balance log from the allocation class
-        self.crew_leaders = initiate_crew_leaders()
-        self.sessions, self.balance_log = generate_session()        # save sessions created and updated balance log   
+        self.crew = initiate_crew()
+        self.sessions, self.balance_log = generate_session()    # save sessions created and updated balance log   
 
 
 class Session:
-    def __init__(self, allocation, session_no, crew_leaders, balance_log):
+    def __init__(self, allocation, session_no, crew, balance_log):
         """ Fills a single session for the list of duty groups. """
         self.allocation = allocation
         self.session_no = session_no
-        self.crew_leaders = crew_leaders
+        self.crew = crew[:]
         self.session_log = []
         # Write functions to be executed when instance of class is created      
         
@@ -269,23 +272,22 @@ class Session:
         
         def initiate_crew():
             """ Assign crew for session (i.e. camper). """   
-            crew = []
             camper_avail = self.allocation.camper_avail
-            for crew_leader in self.crew_leaders:
+            for crew in self.crew:
                 campers = []
-                capacity = crew_leader['capacity']   # repeat as many times as possible
+                capacity = crew.capacity   # repeat as many times as possible
                 while capacity > 0:
                     try:
-                        camper, camper_avail = camper_balance(crew_leader['craft_type'], camper_avail)
-                        self.session_log.append({camper: crew_leader['craft_type']})   # save a record of who was assigned to what craft type
+                        camper, camper_avail = camper_balance(crew.craft_type, camper_avail)
+                        self.session_log.append({camper: crew.craft_type})   # save a record of who was assigned to what craft type
                     except IndexError:
                         # If there are no craft or leaders available, Pandas will throw an IndexError in the respective function
                         # print('--------------------IndexError--------------------')
                         break
                     campers.append(camper)
                     capacity += -1
-                crew.append(Crew(crew_leader['leader'], crew_leader['craft'], crew_leader['craft_type'], crew_leader['capacity'], campers))
-            return crew, self.session_log
+                crew.campers = campers
+            return self.crew, self.session_log
             
 
         # Call functions to run when instance of class is created
